@@ -179,9 +179,13 @@ export class EditorsHistory extends Disposable {
 				}
 
 				// Editor opens: put it as second most recent
+				//
+				// Also check for maximum allowed number of editors and
+				// start to close oldest ones if needed.
 				case GroupChangeKind.EDITOR_OPEN: {
 					if (e.editor) {
 						this.addMostRecentEditor(group, e.editor, false /* is not active */);
+						this.ensureOpenedEditorsLimit();
 					}
 
 					break;
@@ -269,6 +273,43 @@ export class EditorsHistory extends Disposable {
 		}
 
 		return key;
+	}
+
+	private async ensureOpenedEditorsLimit(): Promise<void> {
+		if (!this.editorGroupsService.partOptions.limit?.enabled) {
+			return; // only if enabled
+		}
+
+		if (
+			typeof this.editorGroupsService.partOptions.limit.value !== 'number' ||
+			this.editorGroupsService.partOptions.limit.value <= 1 ||
+			this.editorGroupsService.partOptions.limit.value >= this.mostRecentEditorsMap.size
+		) {
+			return; // only if opened editors exceed setting and is valid
+		}
+
+		// Extract least recently used editors that can be closed
+		const activeEditor = this.editorGroupsService.activeGroup.activeEditor;
+		const leastRecentlyClosableEditors = this.mostRecentEditorsMap.values().reverse().filter(({ editor }) => {
+			if (editor === activeEditor) {
+				return false; // not the active editor
+			}
+
+			if (editor.isDirty()) {
+				return false; // not dirty editors
+			}
+
+			return true;
+		});
+
+		// Close editors until we reached the limit again
+		for (const { editor, groupId } of leastRecentlyClosableEditors) {
+			await this.editorGroupsService.getGroup(groupId)?.closeEditor(editor);
+
+			if (this.editorGroupsService.partOptions.limit.value >= this.mostRecentEditorsMap.size) {
+				break; // limit reached again
+			}
+		}
 	}
 
 	private saveState(): void {
