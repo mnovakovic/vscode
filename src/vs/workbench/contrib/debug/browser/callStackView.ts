@@ -289,7 +289,12 @@ export class CallStackView extends ViewPane {
 			this.ignoreSelectionChangedEvent = true;
 			try {
 				this.tree.setSelection([element]);
-				this.tree.reveal(element);
+				if ('thread' in element &&
+					this.tree.getRelativeTop(element.thread) === null) {
+					this.tree.reveal(element.thread, 0);
+				} else {
+					this.tree.reveal(element);
+				}
 			} catch (e) { }
 			finally {
 				this.ignoreSelectionChangedEvent = false;
